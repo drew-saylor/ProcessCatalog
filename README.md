@@ -11,7 +11,6 @@
 ## Features
 
 - 🔹 **Organized Process Management** – Easily categorize and document different processes.
-- 🔹 **Scalability** – Designed to grow with your needs.
 - 🔹 **Collaboration** – Facilitates teamwork by maintaining clear and structured documentation.
 - 🔹 **Version Control** – Track changes and improvements over time.
 
