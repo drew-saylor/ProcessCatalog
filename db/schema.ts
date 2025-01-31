@@ -1,6 +1,9 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { relations } from "drizzle-orm";
+
+// Add input source type enum
+export const inputSourceType = pgEnum("input_source_type", ["direct", "file", "bigquery"]);
 
 // User table from auth blueprint
 export const users = pgTable("users", {
@@ -49,7 +52,9 @@ export const executions = pgTable("executions", {
   id: serial("id").primaryKey(),
   deploymentId: integer("deployment_id").references(() => deployments.id),
   status: text("status", { enum: ["pending", "running", "completed", "failed"] }).notNull(),
-  input: jsonb("input").notNull(),
+  inputType: inputSourceType("input_type").notNull(),
+  inputSource: text("input_source").notNull(),
+  inputMetadata: jsonb("input_metadata").notNull().default({}),
   output: jsonb("output"),
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),

@@ -3,24 +3,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { type SelectDeployment, type InsertDeployment } from "@db/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Box, PlayCircle } from "lucide-react";
+import { Box, PlayCircle, Upload, Database } from "lucide-react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 
 interface DeploymentManagerProps {
   versionId?: number;
 }
 
+type ExecuteData = {
+  inputType: "direct" | "file" | "bigquery";
+  inputSource: string;
+  inputMetadata?: Record<string, any>;
+};
+
 export function DeploymentManager({ versionId }: DeploymentManagerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDeployment, setSelectedDeployment] = useState<SelectDeployment | null>(null);
-  const [input, setInput] = useState("");
+  const [inputType, setInputType] = useState<"direct" | "file" | "bigquery">("direct");
 
   const { data: deployments = [] } = useQuery<SelectDeployment[]>({
     queryKey: ["/api/deployments"],
@@ -28,6 +34,7 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
   });
 
   const form = useForm<InsertDeployment>();
+  const executeForm = useForm<ExecuteData>();
 
   const createDeploymentMutation = useMutation({
     mutationFn: async (data: InsertDeployment) => {
@@ -41,8 +48,29 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
   });
 
   const executeMutation = useMutation({
-    mutationFn: async ({ deploymentId, input }: { deploymentId: number; input: string }) => {
-      const res = await apiRequest("POST", `/api/deployments/${deploymentId}/execute`, { input });
+    mutationFn: async ({ deploymentId, data }: { deploymentId: number; data: ExecuteData }) => {
+      const formData = new FormData();
+      formData.append("inputType", data.inputType);
+      formData.append("inputSource", data.inputSource);
+
+      if (data.inputType === "file" && data.inputMetadata?.file) {
+        formData.append("file", data.inputMetadata.file);
+      }
+
+      if (data.inputMetadata) {
+        formData.append("inputMetadata", JSON.stringify(data.inputMetadata));
+      }
+
+      const res = await fetch(`/api/deployments/${deploymentId}/execute`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
       return res.json();
     },
     onSuccess: () => {
@@ -140,25 +168,116 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
                         <DialogHeader>
                           <DialogTitle>Execute Deployment: {deployment.name}</DialogTitle>
                         </DialogHeader>
-                        <div className="space-y-4">
-                          <Textarea
-                            placeholder="Enter input data..."
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                          />
-                          <Button
-                            className="w-full"
-                            onClick={() =>
+                        <Form {...executeForm}>
+                          <form
+                            onSubmit={executeForm.handleSubmit((data) =>
                               executeMutation.mutate({
                                 deploymentId: deployment.id,
-                                input,
+                                data,
                               })
-                            }
-                            disabled={executeMutation.isPending}
+                            )}
+                            className="space-y-4"
                           >
-                            Execute
-                          </Button>
-                        </div>
+                            <FormField
+                              control={executeForm.control}
+                              name="inputType"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Input Type</FormLabel>
+                                  <Select
+                                    onValueChange={(value: "direct" | "file" | "bigquery") => {
+                                      field.onChange(value);
+                                      setInputType(value);
+                                    }}
+                                    defaultValue={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select input type" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="direct">Direct Input</SelectItem>
+                                      <SelectItem value="file">File Upload</SelectItem>
+                                      <SelectItem value="bigquery">BigQuery Table</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </FormItem>
+                              )}
+                            />
+
+                            {inputType === "direct" && (
+                              <FormField
+                                control={executeForm.control}
+                                name="inputSource"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Input Data (JSON)</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        placeholder='{"key": "value"}'
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {inputType === "file" && (
+                              <FormField
+                                control={executeForm.control}
+                                name="inputSource"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Upload File</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type="file"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) {
+                                            field.onChange(file.name);
+                                            executeForm.setValue("inputMetadata", {
+                                              file,
+                                              type: file.type,
+                                            });
+                                          }
+                                        }}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {inputType === "bigquery" && (
+                              <FormField
+                                control={executeForm.control}
+                                name="inputSource"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>BigQuery Table</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        {...field}
+                                        placeholder="project.dataset.table"
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            <Button
+                              type="submit"
+                              className="w-full"
+                              disabled={executeMutation.isPending}
+                            >
+                              Execute
+                            </Button>
+                          </form>
+                        </Form>
                       </DialogContent>
                     </Dialog>
                   </div>

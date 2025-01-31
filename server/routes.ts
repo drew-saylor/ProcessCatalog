@@ -4,9 +4,30 @@ import { setupAuth } from "./auth";
 import { db } from "@db";
 import { processes, versions, deployments, executions } from "@db/schema";
 import { eq, and } from "drizzle-orm";
+import multer from "multer";
+import path from "path";
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: "uploads/",
+  filename: function (req, file, cb) {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+
+const upload = multer({ storage });
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
+
+  // Create uploads directory if it doesn't exist
+  import("fs").then(({ mkdir }) => {
+    mkdir("uploads", { recursive: true }, (err) => {
+      if (err && err.code !== "EEXIST") {
+        console.error("Error creating uploads directory:", err);
+      }
+    });
+  });
 
   // Get all processes
   app.get("/api/processes", async (req, res) => {
@@ -80,8 +101,8 @@ export function registerRoutes(app: Express): Server {
     res.status(201).json(deployment);
   });
 
-  // Execute deployment
-  app.post("/api/deployments/:id/execute", async (req, res) => {
+  // Execute deployment with file upload support
+  app.post("/api/deployments/:id/execute", upload.single("file"), async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     // Verify deployment ownership
@@ -97,27 +118,74 @@ export function registerRoutes(app: Express): Server {
 
     if (!deployment) return res.sendStatus(404);
 
-    const [execution] = await db
-      .insert(executions)
-      .values({
-        deploymentId: deployment.id,
-        status: "pending",
-        input: req.body,
-      })
-      .returning();
+    const inputType = req.body.inputType as "direct" | "file" | "bigquery";
+    let inputSource = req.body.inputSource;
+    let inputMetadata = {};
 
-    // In a real app, this would trigger an async job
-    const [updated] = await db
-      .update(executions)
-      .set({
-        status: "completed",
-        output: { result: "Simulated execution result" },
-        completedAt: new Date(),
-      })
-      .where(eq(executions.id, execution.id))
-      .returning();
+    try {
+      // Handle different input types
+      switch (inputType) {
+        case "file":
+          if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+          }
+          inputSource = req.file.path;
+          inputMetadata = {
+            originalName: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+          };
+          break;
 
-    res.json(updated);
+        case "bigquery":
+          // Validate BigQuery table format (project.dataset.table)
+          if (!/^[\w-]+\.[\w-]+\.[\w-]+$/.test(inputSource)) {
+            return res.status(400).json({
+              error: "Invalid BigQuery table format. Use project.dataset.table",
+            });
+          }
+          break;
+
+        case "direct":
+          // Validate JSON input
+          try {
+            JSON.parse(inputSource);
+          } catch (e) {
+            return res.status(400).json({ error: "Invalid JSON input" });
+          }
+          break;
+
+        default:
+          return res.status(400).json({ error: "Invalid input type" });
+      }
+
+      const [execution] = await db
+        .insert(executions)
+        .values({
+          deploymentId: deployment.id,
+          status: "pending",
+          inputType,
+          inputSource,
+          inputMetadata,
+        })
+        .returning();
+
+      // In a real app, this would trigger an async job based on the input type
+      const [updated] = await db
+        .update(executions)
+        .set({
+          status: "completed",
+          output: { result: `Simulated execution result for ${inputType} input` },
+          completedAt: new Date(),
+        })
+        .where(eq(executions.id, execution.id))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Execution error:", error);
+      res.status(500).json({ error: "Failed to execute deployment" });
+    }
   });
 
   const httpServer = createServer(app);
