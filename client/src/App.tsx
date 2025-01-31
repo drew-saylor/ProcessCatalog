@@ -12,8 +12,8 @@ import { ProtectedRoute } from "./lib/protected-route";
 function Router() {
   return (
     <Switch>
-      <ProtectedRoute path="/" component={HomePage} />
-      <ProtectedRoute path="/process/:id" component={ProcessDetail} />
+      <Route path="/" component={() => <ProtectedRoute path="/" component={HomePage} />} />
+      <Route path="/process/:id" component={() => <ProtectedRoute path="/process/:id" component={ProcessDetail} />} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
