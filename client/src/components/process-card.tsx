@@ -3,9 +3,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type SelectProcess } from "@db/schema";
 import { Link } from "wouter";
-import { GitBranch, PlayCircle } from "lucide-react";
+import { GitBranch, Box } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useState } from "react";
+import { ProcessForm } from "./process-form";
 
 export function ProcessCard({ process }: { process: SelectProcess }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader>
@@ -29,10 +34,20 @@ export function ProcessCard({ process }: { process: SelectProcess }) {
         <Button variant="outline" asChild>
           <Link href={`/process/${process.id}`}>View Details</Link>
         </Button>
-        <Button>
-          <PlayCircle className="h-4 w-4 mr-2" />
-          Execute
-        </Button>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <Box className="h-4 w-4 mr-2" />
+              Deploy
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Deploy Process</DialogTitle>
+            </DialogHeader>
+            <ProcessForm processId={process.id} />
+          </DialogContent>
+        </Dialog>
       </CardFooter>
     </Card>
   );
