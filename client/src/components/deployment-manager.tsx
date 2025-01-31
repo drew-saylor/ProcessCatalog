@@ -29,8 +29,8 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
   const [inputType, setInputType] = useState<"direct" | "file" | "bigquery">("direct");
 
   const { data: deployments = [] } = useQuery<SelectDeployment[]>({
-    queryKey: ["/api/deployments"],
-    enabled: true,
+    queryKey: [`/api/versions/${versionId}/deployments`],
+    enabled: !!versionId,
   });
 
   const form = useForm<InsertDeployment>();
@@ -42,7 +42,7 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deployments"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/versions/${versionId}/deployments`] });
       toast({ title: "Deployment created successfully" });
     },
   });

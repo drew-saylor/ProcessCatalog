@@ -87,6 +87,24 @@ export function registerRoutes(app: Express): Server {
     res.json(userDeployments);
   });
 
+  // Get deployments for a specific version
+  app.get("/api/versions/:id/deployments", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const versionId = parseInt(req.params.id);
+    const userDeployments = await db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.versionId, versionId),
+          eq(deployments.userId, req.user.id)
+        )
+      );
+
+    res.json(userDeployments);
+  });
+
   // Create deployment
   app.post("/api/versions/:id/deploy", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
