@@ -1,36 +1,21 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";
-import { type SelectProcess, type SelectExecution } from "@db/schema";
+import { type SelectProcess, type SelectVersion } from "@db/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { GitBranch, ArrowLeft, PlayCircle } from "lucide-react";
+import { VersionManager } from "@/components/version-manager";
+import { DeploymentManager } from "@/components/deployment-manager";
+import { GitBranch, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
 
 export default function ProcessDetail() {
   const [, params] = useRoute("/process/:id");
-  const { toast } = useToast();
-  const [input, setInput] = useState("");
+  const [selectedVersion, setSelectedVersion] = useState<SelectVersion | null>(null);
 
-  const { data: process } = useQuery<SelectProcess>({
+  const { data: process } = useQuery<SelectProcess & { versions: SelectVersion[] }>({
     queryKey: [`/api/processes/${params?.id}`],
-  });
-
-  const executeMutation = useMutation({
-    mutationFn: async (input: string) => {
-      const res = await apiRequest("POST", `/api/processes/${params?.id}/execute`, { input });
-      return res.json();
-    },
-    onSuccess: (execution: SelectExecution) => {
-      toast({
-        title: "Process executed successfully",
-        description: `Status: ${execution.status}`,
-      });
-    },
   });
 
   if (!process) {
@@ -47,7 +32,7 @@ export default function ProcessDetail() {
           </Link>
         </Button>
 
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-8">
           <Card>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -73,28 +58,14 @@ export default function ProcessDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Execute Process</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Textarea
-                  placeholder="Enter input data..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-                <Button
-                  className="w-full"
-                  onClick={() => executeMutation.mutate(input)}
-                  disabled={executeMutation.isPending}
-                >
-                  <PlayCircle className="h-4 w-4 mr-2" />
-                  Execute
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-8">
+            <VersionManager
+              processId={process.id}
+              versions={process.versions || []}
+              onVersionSelect={setSelectedVersion}
+            />
+            <DeploymentManager versionId={selectedVersion?.id} />
+          </div>
         </div>
       </div>
     </div>
