@@ -206,6 +206,63 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Update deployment status (activate/deactivate)
+  app.patch("/api/deployments/:id/status", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const deploymentId = parseInt(req.params.id);
+    const status = req.body.status as "active" | "inactive";
+
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const [deployment] = await db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.id, deploymentId),
+          eq(deployments.userId, req.user.id)
+        )
+      );
+
+    if (!deployment) {
+      return res.status(404).json({ error: "Deployment not found" });
+    }
+
+    const [updated] = await db
+      .update(deployments)
+      .set({ status })
+      .where(eq(deployments.id, deploymentId))
+      .returning();
+
+    res.json(updated);
+  });
+
+  // Delete deployment
+  app.delete("/api/deployments/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const deploymentId = parseInt(req.params.id);
+    const [deployment] = await db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.id, deploymentId),
+          eq(deployments.userId, req.user.id)
+        )
+      );
+
+    if (!deployment) {
+      return res.status(404).json({ error: "Deployment not found" });
+    }
+
+    await db.delete(deployments).where(eq(deployments.id, deploymentId));
+    res.sendStatus(204);
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

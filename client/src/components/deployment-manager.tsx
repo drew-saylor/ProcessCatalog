@@ -4,13 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useForm } from "react-hook-form";
 import { type SelectDeployment, type InsertDeployment } from "@db/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Box, PlayCircle, Upload, Database } from "lucide-react";
+import { Box, PlayCircle, Upload, Database, Power, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface DeploymentManagerProps {
   versionId?: number;
@@ -75,6 +76,41 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
     },
     onSuccess: () => {
       toast({ title: "Process executed successfully" });
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ deploymentId, status }: { deploymentId: number; status: "active" | "inactive" }) => {
+      const res = await apiRequest("PATCH", `/api/deployments/${deploymentId}/status`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/versions/${versionId}/deployments`] });
+      toast({ title: "Deployment status updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update deployment status",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteDeploymentMutation = useMutation({
+    mutationFn: async (deploymentId: number) => {
+      await apiRequest("DELETE", `/api/deployments/${deploymentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/versions/${versionId}/deployments`] });
+      toast({ title: "Deployment deleted successfully" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to delete deployment",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -153,133 +189,176 @@ export function DeploymentManager({ versionId }: DeploymentManagerProps) {
                         Status: {deployment.status}
                       </p>
                     </div>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedDeployment(deployment)}
-                        >
-                          <PlayCircle className="h-4 w-4 mr-2" />
-                          Execute
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Execute Deployment: {deployment.name}</DialogTitle>
-                        </DialogHeader>
-                        <Form {...executeForm}>
-                          <form
-                            onSubmit={executeForm.handleSubmit((data) =>
-                              executeMutation.mutate({
-                                deploymentId: deployment.id,
-                                data,
-                              })
-                            )}
-                            className="space-y-4"
+                    <div className="flex items-center gap-2">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
                           >
-                            <FormField
-                              control={executeForm.control}
-                              name="inputType"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Input Type</FormLabel>
-                                  <Select
-                                    onValueChange={(value: "direct" | "file" | "bigquery") => {
-                                      field.onChange(value);
-                                      setInputType(value);
-                                    }}
-                                    defaultValue={field.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Select input type" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="direct">Direct Input</SelectItem>
-                                      <SelectItem value="file">File Upload</SelectItem>
-                                      <SelectItem value="bigquery">BigQuery Table</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </FormItem>
+                            <PlayCircle className="h-4 w-4 mr-2" />
+                            Execute
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Execute Deployment: {deployment.name}</DialogTitle>
+                          </DialogHeader>
+                          <Form {...executeForm}>
+                            <form
+                              onSubmit={executeForm.handleSubmit((data) =>
+                                executeMutation.mutate({
+                                  deploymentId: deployment.id,
+                                  data,
+                                })
                               )}
-                            />
-
-                            {inputType === "direct" && (
-                              <FormField
-                                control={executeForm.control}
-                                name="inputSource"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Input Data (JSON)</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        {...field}
-                                        placeholder='{"key": "value"}'
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            {inputType === "file" && (
-                              <FormField
-                                control={executeForm.control}
-                                name="inputSource"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Upload File</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type="file"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) {
-                                            field.onChange(file.name);
-                                            executeForm.setValue("inputMetadata", {
-                                              file,
-                                              type: file.type,
-                                            });
-                                          }
-                                        }}
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            {inputType === "bigquery" && (
-                              <FormField
-                                control={executeForm.control}
-                                name="inputSource"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>BigQuery Table</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        {...field}
-                                        placeholder="project.dataset.table"
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            <Button
-                              type="submit"
-                              className="w-full"
-                              disabled={executeMutation.isPending}
+                              className="space-y-4"
                             >
-                              Execute
-                            </Button>
-                          </form>
-                        </Form>
-                      </DialogContent>
-                    </Dialog>
+                              <FormField
+                                control={executeForm.control}
+                                name="inputType"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Input Type</FormLabel>
+                                    <Select
+                                      onValueChange={(value: "direct" | "file" | "bigquery") => {
+                                        field.onChange(value);
+                                        setInputType(value);
+                                      }}
+                                      defaultValue={field.value}
+                                    >
+                                      <FormControl>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select input type" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="direct">Direct Input</SelectItem>
+                                        <SelectItem value="file">File Upload</SelectItem>
+                                        <SelectItem value="bigquery">BigQuery Table</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </FormItem>
+                                )}
+                              />
+
+                              {inputType === "direct" && (
+                                <FormField
+                                  control={executeForm.control}
+                                  name="inputSource"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Input Data (JSON)</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          placeholder='{"key": "value"}'
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
+
+                              {inputType === "file" && (
+                                <FormField
+                                  control={executeForm.control}
+                                  name="inputSource"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Upload File</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type="file"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              field.onChange(file.name);
+                                              executeForm.setValue("inputMetadata", {
+                                                file,
+                                                type: file.type,
+                                              });
+                                            }
+                                          }}
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
+
+                              {inputType === "bigquery" && (
+                                <FormField
+                                  control={executeForm.control}
+                                  name="inputSource"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>BigQuery Table</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          {...field}
+                                          placeholder="project.dataset.table"
+                                        />
+                                      </FormControl>
+                                    </FormItem>
+                                  )}
+                                />
+                              )}
+
+                              <Button
+                                type="submit"
+                                className="w-full"
+                                disabled={executeMutation.isPending}
+                              >
+                                Execute
+                              </Button>
+                            </form>
+                          </Form>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleStatusMutation.mutate({
+                          deploymentId: deployment.id,
+                          status: deployment.status === "active" ? "inactive" : "active"
+                        })}
+                      >
+                        <Power className={`h-4 w-4 mr-2 ${deployment.status === "active" ? "text-green-500" : "text-red-500"}`} />
+                        {deployment.status === "active" ? "Deactivate" : "Activate"}
+                      </Button>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Deployment</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete this deployment? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteDeploymentMutation.mutate(deployment.id)}
+                              className="bg-red-500 hover:bg-red-600"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
